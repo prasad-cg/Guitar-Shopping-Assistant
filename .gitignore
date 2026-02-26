@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+venv/
+env/
+.env
+
+# Project specific
+data/faiss_index_offline/
+*.txt
+*.log
+.DS_Store
+
+# User-specific
+.gemini/
+.vscode/
+.idea/
+*.py.backup
+debug_*.py
+test_*.py
+*out.txt
+*.pem
+cacert.pem
+Pipfile
+Pipfile.lock
