@@ -10,7 +10,6 @@ env/
 
 # Project specific
 data/faiss_index_offline/
-*.txt
 *.log
 .DS_Store
 
