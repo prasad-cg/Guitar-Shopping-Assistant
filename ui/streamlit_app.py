@@ -450,7 +450,7 @@ def render_about_tab():
 
 
 def render_footer():
-    st.markdown('<div class="footer-text"><b>🚀 AI Futures Lab Demonstration</b></div>',
+    st.markdown('<div class="footer-text"><b>Guitar Shopping Multi-Agent AI System</b></div>',
                 unsafe_allow_html=True)
 
 

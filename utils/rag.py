@@ -1,26 +1,12 @@
 """
 RAG (Retrieval-Augmented Generation) System for Guitar Knowledge
 Loads structured guitar catalog data from Excel and builds a FAISS vectorstore.
-Uses OFFLINE Hugging Face embeddings for reliability.
+Uses a LOCAL embedding model (no runtime internet access required).
 """
 import os
-import ssl
 from typing import List
 import pandas as pd
 
-# Bypass SSL verification for model downloads (handling enterprise proxy issues)
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
-
-# Cleaned up environment variables - let pip-system-certs handle it
-os.environ['CURL_CA_BUNDLE'] = '' 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores.faiss import FAISS
@@ -32,6 +18,9 @@ from config import (
     TOP_K_RESULTS,
 )
 
+# Path to the locally stored embedding model (no internet needed)
+LOCAL_MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "all-MiniLM-L6-v2")
+
 
 class GuitarKnowledgeRAG:
     """RAG system for guitar shopping knowledge base with keyword fallback"""
@@ -39,23 +28,37 @@ class GuitarKnowledgeRAG:
     def __init__(self):
         self.embeddings = None
         self.vectorstore = None
-        self.documents = None # Store raw documents for fallback
-        self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        self.documents = None  # Store raw documents for fallback
         self.load_knowledge_base()
 
     def _get_embeddings(self):
-        """Load offline Hugging Face embeddings"""
+        """Load embeddings from local model directory (no internet required)"""
         if self.embeddings is None:
-            print(f"Loading offline embedding model: {self.model_name}...")
+            # Use local path if the model has been downloaded there, otherwise fall back to model name
+            if os.path.exists(LOCAL_MODEL_PATH):
+                model_source = LOCAL_MODEL_PATH
+                print(f"Loading embedding model from local path: {LOCAL_MODEL_PATH}")
+            else:
+                model_source = "sentence-transformers/all-MiniLM-L6-v2"
+                print(f"WARNING: Local model not found at {LOCAL_MODEL_PATH}")
+                print("Attempting to download from Hugging Face (may fail behind proxy)...")
+                print("See README or run: python download_model.py on a machine with internet.")
+
             try:
+                # TRANSFORMERS_OFFLINE=1 ensures no network calls if model is local
+                if os.path.exists(LOCAL_MODEL_PATH):
+                    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                    os.environ["HF_HUB_OFFLINE"] = "1"
+
                 self.embeddings = HuggingFaceEmbeddings(
-                    model_name=self.model_name,
-                    model_kwargs={'device': 'cpu'},
-                    encode_kwargs={'normalize_embeddings': True}
+                    model_name=model_source,
+                    model_kwargs={"device": "cpu"},
+                    encode_kwargs={"normalize_embeddings": True},
                 )
+                print("Embedding model loaded successfully.")
             except Exception as e:
-                print(f"Error loading offline embeddings: {e}")
-                # We don't raise here, we'll use fallback instead
+                print(f"Error loading embeddings: {e}")
+                print("RAG will fall back to keyword search.")
         return self.embeddings
 
     def load_knowledge_base(self):
@@ -114,7 +117,7 @@ class GuitarKnowledgeRAG:
         if self.vectorstore is not None:
             return
 
-        vectorstore_path = os.path.join(os.path.dirname(RAG_PDF_PATH), "faiss_index_offline")
+        vectorstore_path = os.path.join(os.path.dirname(RAG_PDF_PATH), "faiss_index")
 
         # Try to load from local cache first
         if os.path.exists(vectorstore_path):
@@ -124,7 +127,7 @@ class GuitarKnowledgeRAG:
                     self.vectorstore = FAISS.load_local(
                         vectorstore_path, embeddings, allow_dangerous_deserialization=True
                     )
-                    print(f"Loaded offline vectorstore from {vectorstore_path}")
+                    print(f"Loaded vectorstore from {vectorstore_path}")
                     return
             except Exception as e:
                 print(f"Could not load local vectorstore: {e}. Recreating...")
@@ -147,13 +150,13 @@ class GuitarKnowledgeRAG:
                 print("Failed to load embeddings. Vectorstore creation skipped.")
                 return
 
-            print(f"Embedding {len(chunks)} chunks using offline model...")
+            print(f"Embedding {len(chunks)} chunks...")
             self.vectorstore = FAISS.from_documents(chunks, embeddings)
 
             # Save to local cache
             os.makedirs(os.path.dirname(vectorstore_path), exist_ok=True)
             self.vectorstore.save_local(vectorstore_path)
-            print(f"Saved offline vectorstore to {vectorstore_path}")
+            print(f"Saved vectorstore to {vectorstore_path}")
 
     def retrieve(self, query: str, k: int = TOP_K_RESULTS) -> List[str]:
         """Retrieve relevant guitar information based on query (with keyword fallback)"""
@@ -161,7 +164,7 @@ class GuitarKnowledgeRAG:
         try:
             if self.vectorstore is None:
                 self._create_vectorstore()
-            
+
             if self.vectorstore is not None:
                 results = self.vectorstore.similarity_search(query, k=k)
                 return [doc.page_content for doc in results]
@@ -175,19 +178,17 @@ class GuitarKnowledgeRAG:
         """Simple keyword search fallback if embeddings/vector DB fail"""
         if not self.documents:
             return ["No catalog data available."]
-        
+
         print(f"Performing keyword fallback for: '{query}'")
         query_words = query.lower().split()
         scores = []
-        
+
         for doc in self.documents:
             content = doc.page_content.lower()
-            # Simple count of query words in content
             score = sum(1 for word in query_words if word in content)
             if score > 0:
                 scores.append((score, doc.page_content))
-        
-        # Sort by score descending
+
         scores.sort(key=lambda x: x[0], reverse=True)
         return [content for score, content in scores[:k]]
 
@@ -200,7 +201,7 @@ class GuitarKnowledgeRAG:
         formatted_results = []
         for i, res in enumerate(results):
             formatted_results.append(f"--- CATALOG ENTRY {i+1} ---\n{res}")
-        
+
         context = "\n\n".join(formatted_results)
         return f"Guitar Catalog Excerpts:\n{context}"
 
