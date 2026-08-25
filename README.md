@@ -41,6 +41,10 @@ guitar-agents-lab/
 │   ├── information_agent.py      # Knowledge-based agent (RAG)
 │   ├── recommendation_agent.py   # Preference matching agent
 │   └── negotiator_agent.py       # Pricing & negotiation agent
+├── evals/
+│   ├── answer_evaluator.py       # Response quality evaluation (LLM-as-judge)
+│   ├── prompt_evaluator.py       # Agent prompt effectiveness evaluation
+│   └── run_evals.py              # CLI runner for evaluations
 ├── utils/
 │   ├── rag.py                    # RAG system (local embeddings + FAISS)
 │   ├── llm_setup.py              # Azure OpenAI initialization
@@ -160,6 +164,53 @@ python main.py --mode interactive
 
 ```bash
 python main.py --mode cli --query "recommend a beginner guitar for blues under $500"
+```
+
+---
+
+## 📊 Evaluation Framework
+
+The project includes a separate evaluation system (`evals/`) to measure quality of both the system outputs and the agent prompts.
+
+### Answer Evaluation
+
+Evaluates live system responses against user queries using LLM-as-a-judge. Scores across 5 dimensions:
+
+| Dimension | What it measures |
+|-----------|-----------------|
+| Relevance | Does the answer address what was actually asked? |
+| Completeness | Are all aspects of the question covered? |
+| Groundedness | Is the response based on catalog data, not hallucinated? |
+| Helpfulness | Would this help a customer make a decision? |
+| Clarity | Is it well-structured and easy to understand? |
+
+### Prompt Evaluation
+
+Evaluates agent system prompts (personas) to assess whether they effectively guide the LLM. Scores across 6 dimensions:
+
+| Dimension | What it measures |
+|-----------|-----------------|
+| Role Clarity | Is the agent's identity clearly defined? |
+| Constraint Effectiveness | Are guardrails against hallucination well-defined? |
+| Task Alignment | Does the prompt match the agent's responsibility? |
+| Tone Guidance | Does it establish the right conversational style? |
+| Completeness | Does it cover edge cases and fallback behavior? |
+| Conciseness | Is it focused without unnecessary verbosity? |
+
+### Running Evaluations
+
+```bash
+# Evaluate agent prompts only
+python -m evals.run_evals --type prompt
+
+# Evaluate system answers (generates live responses + evaluates)
+python -m evals.run_evals --type answer
+
+# Run both
+python -m evals.run_evals --type all
+
+# Save results to JSON
+python -m evals.run_evals --type all --output eval_results.json
 ```
 
 ---

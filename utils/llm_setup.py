@@ -1,6 +1,13 @@
 """
 LLM Setup and Configuration
 """
+import os
+import certifi
+
+# Ensure SSL works on corporate machines with proxy/inspection.
+# Always point to the certifi bundle — existing SSL_CERT_FILE may be stale or invalid.
+os.environ["SSL_CERT_FILE"] = certifi.where()
+
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from config import AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, MODEL_NAME, TEMPERATURE
 
